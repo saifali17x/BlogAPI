@@ -43,3 +43,6 @@ Thumbs.db
 # Upload directories
 uploads/
 public/uploads/
+
+
+BACKEND_REVIEW.md
