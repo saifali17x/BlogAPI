@@ -1,83 +1,414 @@
-# Blog API Documentation
+# BlogAPI
+
+A full-stack blog platform with role-based authentication, built with Node.js, Express, React, and Prisma ORM.
 
 ## Overview
 
-This is a full-featured blog API with role-based authentication and authorization. It supports three user roles with different permission levels:
+BlogAPI is a modern blogging platform that allows users to create, read, and interact with blog posts. It features a robust backend API with JWT authentication and a clean, responsive React frontend.
 
-- **USER** - Can read posts, create comments, and manage their own profile
-- **AUTHOR** - Can create and manage posts, plus all USER permissions
-- **ADMIN** - Full system access, can manage all content and users
+### Key Features
 
-## Authentication
+- 🔐 **Role-Based Access Control** - Three user roles (USER, AUTHOR, ADMIN)
+- ✍️ **Post Management** - Create, edit, publish, and delete blog posts
+- 💬 **Comment System** - Users can comment on posts
+- 🏷️ **Categories & Tags** - Organize posts with categories and tags
+- 🔍 **Search & Filtering** - Find posts easily with search and filters
+- 📱 **Responsive Design** - Works seamlessly on all devices
+- 🎨 **Clean UI** - Minimalistic, user-friendly interface
 
-All protected routes require a JWT token sent in the Authorization header:
+## Tech Stack
 
+### Backend
+
+- **Node.js** & **Express** - RESTful API server
+- **Prisma ORM** - Database management with PostgreSQL
+- **JWT** - Secure authentication
+- **bcrypt** - Password hashing
+- **express-validator** - Input validation
+
+### Frontend
+
+- **React 19** - UI library
+- **Vite** - Fast build tool
+- **React Router** - Client-side routing
+- **Tailwind CSS 4** - Utility-first styling
+- **Context API** - State management
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 16 or higher
+- PostgreSQL database (or use Neon/Supabase)
+- npm or yarn
+
+### Installation
+
+1. **Clone the repository:**
+
+```bash
+git clone <repository-url>
+cd BlogAPI
 ```
-Authorization: Bearer <your_jwt_token>
+
+2. **Set up the backend:**
+
+```bash
+cd backend
+npm install
+
+# Create .env file
+echo 'DATABASE_URL="your-postgresql-connection-string"
+JWT_SECRET="your-secret-key"
+PORT=3000' > .env
+
+# Run migrations
+npx prisma migrate dev
+
+# (Optional) Seed database
+node lib/script.js
+
+# Start backend server
+npm start
 ```
+
+3. **Set up the frontend:**
+
+```bash
+cd ../frontend
+npm install
+
+# Create .env file
+echo 'VITE_API_URL=http://localhost:3000' > .env
+
+# Start frontend dev server
+npm run dev
+```
+
+4. **Access the application:**
+
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3000
+
+## User Roles & Permissions
+
+### USER (Default)
+
+- View published posts
+- Create and manage own comments
+- Update own profile
+
+### AUTHOR
+
+- All USER permissions
+- Create and manage own posts
+- Publish/unpublish own posts
+
+### ADMIN
+
+- All AUTHOR permissions
+- Delete any post or comment
+- Manage categories and tags
+- Full system access
 
 ## API Endpoints
 
-### Authentication Routes (`/auth`)
+### Authentication (`/auth`)
 
-| Method | Endpoint                | Auth     | Description                        |
-| ------ | ----------------------- | -------- | ---------------------------------- |
-| POST   | `/auth/register`        | Public   | Register a new user                |
-| POST   | `/auth/login`           | Public   | Login and get JWT token            |
-| GET    | `/auth/profile`         | Required | Get current user profile           |
-| PUT    | `/auth/profile`         | Required | Update profile (name, bio, avatar) |
-| POST   | `/auth/change-password` | Required | Change password                    |
+- `POST /auth/register` - Register new user
+- `POST /auth/login` - Login and get JWT token
+- `GET /auth/profile` - Get current user profile (authenticated)
+- `PUT /auth/profile` - Update profile (authenticated)
+- `POST /auth/change-password` - Change password (authenticated)
 
-### Post Routes (`/posts`)
+### Posts (`/posts`)
 
-| Method | Endpoint               | Auth     | Roles         | Description                            |
-| ------ | ---------------------- | -------- | ------------- | -------------------------------------- |
-| GET    | `/posts`               | Public   | -             | Get all published posts (with filters) |
-| GET    | `/posts/:slug`         | Public   | -             | Get single post by slug                |
-| POST   | `/posts`               | Required | AUTHOR, ADMIN | Create new post                        |
-| PUT    | `/posts/:id`           | Required | AUTHOR, ADMIN | Update post (own or any for ADMIN)     |
-| PATCH  | `/posts/:id/publish`   | Required | AUTHOR, ADMIN | Publish a post                         |
-| PATCH  | `/posts/:id/unpublish` | Required | AUTHOR, ADMIN | Unpublish a post                       |
-| DELETE | `/posts/:id`           | Required | ADMIN         | Delete post                            |
+- `GET /posts` - Get all published posts (public, with pagination & filters)
+- `GET /posts/:slug` - Get single post by slug (public)
+- `POST /posts` - Create new post (AUTHOR, ADMIN)
+- `PUT /posts/:id` - Update post (AUTHOR, ADMIN)
+- `PATCH /posts/:id/publish` - Publish post (AUTHOR, ADMIN)
+- `PATCH /posts/:id/unpublish` - Unpublish post (AUTHOR, ADMIN)
+- `DELETE /posts/:id` - Delete post (ADMIN)
 
-**Query Parameters for GET /posts:**
+### Comments (`/comments`)
 
-- `page` - Page number (default: 1)
-- `limit` - Posts per page (default: 10)
-- `published` - Filter by published status (true/false)
-- `authorId` - Filter by author ID
-- `category` - Filter by category slug
-- `tag` - Filter by tag slug
-- `search` - Search in title, content, excerpt
+- `GET /comments/post/:postId` - Get comments for a post (public)
+- `POST /comments` - Create comment (authenticated)
+- `PUT /comments/:id` - Update own comment (authenticated)
+- `DELETE /comments/:id` - Delete own comment or any (ADMIN)
 
-### Comment Routes (`/comments`)
+### Categories (`/categories`)
 
-| Method | Endpoint                 | Auth     | Roles     | Description                           |
-| ------ | ------------------------ | -------- | --------- | ------------------------------------- |
-| GET    | `/comments/post/:postId` | Public   | -         | Get all comments for a post           |
-| POST   | `/comments`              | Required | All       | Create a comment                      |
-| PUT    | `/comments/:id`          | Required | All       | Update own comment                    |
-| DELETE | `/comments/:id`          | Required | All/ADMIN | Delete own comment (or any for ADMIN) |
+- `GET /categories` - Get all categories (public)
+- `GET /categories/:slug` - Get category by slug (public)
+- `POST /categories` - Create category (ADMIN)
+- `PUT /categories/:id` - Update category (ADMIN)
+- `DELETE /categories/:id` - Delete category (ADMIN)
 
-### Category Routes (`/categories`)
+### Tags (`/tags`)
 
-| Method | Endpoint            | Auth     | Roles | Description                         |
-| ------ | ------------------- | -------- | ----- | ----------------------------------- |
-| GET    | `/categories`       | Public   | -     | Get all categories with post counts |
-| GET    | `/categories/:slug` | Public   | -     | Get category with all posts         |
-| POST   | `/categories`       | Required | ADMIN | Create new category                 |
-| PUT    | `/categories/:id`   | Required | ADMIN | Update category                     |
-| DELETE | `/categories/:id`   | Required | ADMIN | Delete category                     |
+- `GET /tags` - Get all tags (public)
+- `GET /tags/:slug` - Get tag by slug (public)
+- `POST /tags` - Create tag (ADMIN)
+- `PUT /tags/:id` - Update tag (ADMIN)
+- `DELETE /tags/:id` - Delete tag (ADMIN)
 
-### Tag Routes (`/tags`)
+## Project Structure
 
-| Method | Endpoint      | Auth     | Roles         | Description                   |
+```
+BlogAPI/
+├── backend/                # Backend API
+│   ├── controllers/        # Route controllers
+│   ├── middleware/         # Auth & validation middleware
+│   ├── routes/             # API routes
+│   ├── prisma/            # Database schema & migrations
+│   ├── lib/               # Utilities (Prisma client, seeding)
+│   ├── app.js             # Express app
+│   └── package.json
+│
+├── frontend/              # React frontend
+│   ├── src/
+│   │   ├── components/    # Reusable components
+│   │   ├── pages/         # Page components
+│   │   ├── contexts/      # React contexts
+│   │   ├── services/      # API integration
+│   │   └── App.jsx        # Main app
+│   ├── public/            # Static assets
+│   └── package.json
+│
+└── README.md             # This file
+```
+
+## Authentication Flow
+
+1. User registers or logs in via `/auth/register` or `/auth/login`
+2. Backend validates credentials and returns a JWT token
+3. Frontend stores token in localStorage
+4. Token is included in Authorization header for protected requests
+5. Backend verifies token on each protected route
+
+## Database Schema
+
+### Key Models
+
+**User**
+
+- id, email, username, password (hashed)
+- name, bio, avatar
+- role (USER, AUTHOR, ADMIN)
+- createdAt, updatedAt
+
+**Post**
+
+- id, title, slug, content, excerpt
+- coverImage, published
+- authorId, viewCount
+- createdAt, updatedAt
+- Relations: author, comments, categories, tags
+
+**Comment**
+
+- id, content
+- authorId, postId
+- createdAt, updatedAt
+- Relations: author, post
+
+**Category & Tag**
+
+- id, name, slug, description
+- Relations: posts (many-to-many)
+
+## Development
+
+### Backend Development
+
+```bash
+cd backend
+
+# Install dependencies
+npm install
+
+# Run migrations
+npx prisma migrate dev
+
+# Generate Prisma Client
+npx prisma generate
+
+# View database in Prisma Studio
+npx prisma studio
+
+# Start development server
+npm start
+```
+
+### Frontend Development
+
+```bash
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+## Environment Variables
+
+### Backend (.env)
+
+```env
+DATABASE_URL="postgresql://user:password@host:5432/dbname"
+JWT_SECRET="your-secret-key"
+PORT=3000
+```
+
+### Frontend (.env)
+
+```env
+VITE_API_URL=http://localhost:3000
+```
+
+## Features in Detail
+
+### Authentication
+
+- JWT-based authentication with 7-day expiration
+- bcrypt password hashing with 10 salt rounds
+- Role-based access control (RBAC)
+- Protected routes with middleware
+
+### Posts
+
+- Create, read, update, delete operations
+- Draft and published states
+- SEO-friendly slug generation
+- Full-text search capability
+- Pagination and filtering
+- View count tracking
+
+### Comments
+
+- Nested comment threads
+- Edit and delete own comments
+- Admin can moderate all comments
+- Timestamps for all comments
+
+### Categories & Tags
+
+- Organize posts by topic
+- Many-to-many relationships
+- Admin-only management
+- SEO-friendly slugs
+
+## API Response Format
+
+### Success Response
+
+```json
+{
+  "user": {...},
+  "token": "jwt_token_here"
+}
+```
+
+### Error Response
+
+```json
+{
+  "error": "Error message here"
+}
+```
+
+### Validation Error
+
+```json
+{
+  "errors": [
+    {
+      "field": "email",
+      "message": "Invalid email format"
+    }
+  ]
+}
+```
+
+## Testing
+
+To test the API, you can use:
+
+- **Postman** - Import the API endpoints
+- **curl** - Command-line testing
+- **Frontend App** - Full integration testing
+
+Example curl request:
+
+```bash
+# Register a new user
+curl -X POST http://localhost:3000/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "username": "newuser",
+    "password": "password123"
+  }'
+
+# Login
+curl -X POST http://localhost:3000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "newuser",
+    "password": "password123"
+  }'
+```
+
+## Deployment
+
+### Backend Deployment
+
+1. Set up PostgreSQL database (e.g., Railway, Neon, Supabase)
+2. Set environment variables
+3. Run database migrations
+4. Deploy to platform (Heroku, Railway, Render, etc.)
+
+### Frontend Deployment
+
+1. Update `VITE_API_URL` to production API URL
+2. Build the app: `npm run build`
+3. Deploy `dist/` folder to hosting (Vercel, Netlify, etc.)
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
+
+## License
+
+MIT
+
+## Support
+
+For issues or questions, please open an issue on the GitHub repository.
+
+---
+
+**Made with ❤️ using Node.js, Express, React, and Prisma**
 | ------ | ------------- | -------- | ------------- | ----------------------------- |
-| GET    | `/tags`       | Public   | -             | Get all tags with post counts |
-| GET    | `/tags/:slug` | Public   | -             | Get tag with all posts        |
-| POST   | `/tags`       | Required | AUTHOR, ADMIN | Create new tag                |
-| PUT    | `/tags/:id`   | Required | AUTHOR, ADMIN | Update tag                    |
-| DELETE | `/tags/:id`   | Required | ADMIN         | Delete tag                    |
+| GET | `/tags` | Public | - | Get all tags with post counts |
+| GET | `/tags/:slug` | Public | - | Get tag with all posts |
+| POST | `/tags` | Required | AUTHOR, ADMIN | Create new tag |
+| PUT | `/tags/:id` | Required | AUTHOR, ADMIN | Update tag |
+| DELETE | `/tags/:id` | Required | ADMIN | Delete tag |
 
 ## Request/Response Examples
 
