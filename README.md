@@ -6,6 +6,10 @@ A full-stack blog platform with role-based authentication, built with Node.js, E
 
 BlogAPI is a modern blogging platform that allows users to create, read, and interact with blog posts. It features a robust backend API with JWT authentication and a clean, responsive React frontend.
 
+## 🌐 Live Demo
+
+**[https://blog-api-opal-seven.vercel.app/](https://blog-api-opal-seven.vercel.app/)**
+
 ### Key Features
 
 - 🔐 **Role-Based Access Control** - Three user roles (USER, AUTHOR, ADMIN)
@@ -47,7 +51,7 @@ BlogAPI is a modern blogging platform that allows users to create, read, and int
 1. **Clone the repository:**
 
 ```bash
-git clone <repository-url>
+git clone git@github.com:saifali17x/BlogAPI.git
 cd BlogAPI
 ```
 
