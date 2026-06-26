@@ -10,31 +10,63 @@ import Register from "./pages/Register";
 import PostsList from "./pages/PostsList";
 import PostDetail from "./pages/PostDetail";
 import Dashboard from "./pages/Dashboard";
+import CreatePost from "./pages/CreatePost";
+import EditPost from "./pages/EditPost";
+import Profile from "./pages/Profile";
+import Bookmarks from "./pages/Bookmarks";
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Layout>
-          <Routes>
+        <Routes>
+          {/* Auth pages — no shared layout (full-screen split design) */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+
+          {/* Create/Edit post — no footer, custom header */}
+          <Route
+            path="/write"
+            element={
+              <ProtectedRoute requireAuth>
+                <CreatePost />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/edit/:id"
+            element={
+              <ProtectedRoute requireAuth>
+                <EditPost />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* All other pages share Layout (Navbar + Footer) via Outlet */}
+          <Route element={<Layout />}>
             <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
             <Route path="/posts" element={<PostsList />} />
             <Route path="/posts/:slug" element={<PostDetail />} />
-
+            <Route path="/author/:username" element={<Profile />} />
             <Route
               path="/dashboard"
               element={
-                <ProtectedRoute requireAuth requireAuthor>
+                <ProtectedRoute requireAuth>
                   <Dashboard />
                 </ProtectedRoute>
               }
             />
-
+            <Route
+              path="/bookmarks"
+              element={
+                <ProtectedRoute requireAuth>
+                  <Bookmarks />
+                </ProtectedRoute>
+              }
+            />
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Layout>
+          </Route>
+        </Routes>
       </BrowserRouter>
     </AuthProvider>
   );
@@ -42,12 +74,16 @@ export default function App() {
 
 function NotFound() {
   return (
-    <div className="flex items-center justify-center min-h-screen">
+    <div className="min-h-[60vh] flex items-center justify-center px-4 page-enter">
       <div className="text-center">
-        <h1 className="text-6xl font-bold text-gray-900 mb-4">404</h1>
-        <p className="text-xl text-gray-600 mb-8">Page not found</p>
-        <a href="/" className="text-blue-600 hover:underline">
-          Go back home
+        <div className="text-8xl font-extrabold gradient-text mb-4">404</div>
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Page not found</h2>
+        <p className="text-slate-500 mb-8">The page you're looking for doesn't exist.</p>
+        <a
+          href="/"
+          className="inline-block px-6 py-3 btn-gradient rounded-xl font-semibold text-sm shadow-sm"
+        >
+          Back to home
         </a>
       </div>
     </div>

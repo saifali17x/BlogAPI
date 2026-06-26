@@ -1,54 +1,47 @@
 import { prisma } from "../lib/prisma.js";
 import { validationResult } from "express-validator";
 
+const WORDS_PER_MINUTE = 200;
+
+const calcReadingTime = (content) => {
+  if (!content) return 1;
+  const wordCount = content.trim().split(/\s+/).length;
+  return Math.max(1, Math.ceil(wordCount / WORDS_PER_MINUTE));
+};
+
+const slugify = (text) =>
+  text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+
+const postListInclude = {
+  author: { select: { id: true, name: true, username: true, avatar: true } },
+  categories: true,
+  tags: true,
+  _count: { select: { comments: true, likes: true } },
+};
+
 // Get all posts (with filters and pagination)
 export const getAllPosts = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      published,
-      authorId,
-      category,
-      tag,
-      search,
-    } = req.query;
+    const { page = 1, limit = 10, authorId, category, tag, search, sortBy = "createdAt" } = req.query;
 
-    const skip = (page - 1) * limit;
-    const where = {};
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const where = { published: true };
 
-    // Filter by published status (public only sees published)
-    if (published !== undefined) {
-      where.published = published === "true";
-    } else {
-      // Default: only show published posts to non-authenticated users
-      where.published = true;
-    }
+    if (authorId) where.authorId = parseInt(authorId);
 
-    // Filter by author
-    if (authorId) {
-      where.authorId = parseInt(authorId);
-    }
-
-    // Filter by category
     if (category) {
-      where.categories = {
-        some: {
-          slug: category,
-        },
-      };
+      where.categories = { some: { slug: category } };
     }
 
-    // Filter by tag
     if (tag) {
-      where.tags = {
-        some: {
-          slug: tag,
-        },
-      };
+      where.tags = { some: { slug: tag } };
     }
 
-    // Search in title and content
     if (search) {
       where.OR = [
         { title: { contains: search, mode: "insensitive" } },
@@ -57,29 +50,20 @@ export const getAllPosts = async (req, res) => {
       ];
     }
 
+    const orderBy =
+      sortBy === "popular"
+        ? { viewCount: "desc" }
+        : sortBy === "liked"
+        ? { likes: { _count: "desc" } }
+        : { createdAt: "desc" };
+
     const [posts, total] = await Promise.all([
       prisma.post.findMany({
         where,
         skip,
         take: parseInt(limit),
-        orderBy: { createdAt: "desc" },
-        include: {
-          author: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-              avatar: true,
-            },
-          },
-          categories: true,
-          tags: true,
-          _count: {
-            select: {
-              comments: true,
-            },
-          },
-        },
+        orderBy,
+        include: postListInclude,
       }),
       prisma.post.count({ where }),
     ]);
@@ -90,7 +74,7 @@ export const getAllPosts = async (req, res) => {
         total,
         page: parseInt(page),
         limit: parseInt(limit),
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(total / parseInt(limit)),
       },
     });
   } catch (error) {
@@ -107,26 +91,19 @@ export const getPostBySlug = async (req, res) => {
     const post = await prisma.post.findUnique({
       where: { slug },
       include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            bio: true,
-            avatar: true,
-          },
-        },
+        author: { select: { id: true, name: true, username: true, bio: true, avatar: true } },
         categories: true,
         tags: true,
+        _count: { select: { comments: true, likes: true } },
         comments: {
+          where: { parentId: null },
           include: {
-            author: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
-                avatar: true,
+            author: { select: { id: true, name: true, username: true, avatar: true } },
+            replies: {
+              include: {
+                author: { select: { id: true, name: true, username: true, avatar: true } },
               },
+              orderBy: { createdAt: "asc" },
             },
           },
           orderBy: { createdAt: "desc" },
@@ -138,11 +115,8 @@ export const getPostBySlug = async (req, res) => {
       return res.status(404).json({ error: "Post not found" });
     }
 
-    // Increment view count
-    await prisma.post.update({
-      where: { id: post.id },
-      data: { viewCount: { increment: 1 } },
-    });
+    // Non-blocking view count increment
+    prisma.post.update({ where: { id: post.id }, data: { viewCount: { increment: 1 } } }).catch(() => {});
 
     res.json({ post });
   } catch (error) {
@@ -151,67 +125,113 @@ export const getPostBySlug = async (req, res) => {
   }
 };
 
+// Get related posts by shared tags/categories
+export const getRelatedPosts = async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { limit = 4 } = req.query;
+
+    const post = await prisma.post.findUnique({
+      where: { slug },
+      include: { tags: { select: { id: true } }, categories: { select: { id: true } } },
+    });
+
+    if (!post) {
+      return res.status(404).json({ error: "Post not found" });
+    }
+
+    const tagIds = post.tags.map((t) => t.id);
+    const categoryIds = post.categories.map((c) => c.id);
+
+    const related = await prisma.post.findMany({
+      where: {
+        published: true,
+        id: { not: post.id },
+        OR: [
+          ...(tagIds.length ? [{ tags: { some: { id: { in: tagIds } } } }] : []),
+          ...(categoryIds.length ? [{ categories: { some: { id: { in: categoryIds } } } }] : []),
+        ],
+      },
+      take: parseInt(limit),
+      orderBy: { publishedAt: "desc" },
+      include: postListInclude,
+    });
+
+    res.json({ posts: related });
+  } catch (error) {
+    console.error("Get related posts error:", error);
+    res.status(500).json({ error: "Server error fetching related posts" });
+  }
+};
+
+// Get author's draft posts
+export const getMyPosts = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, published } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const where = { authorId: req.user.id };
+    if (published !== undefined) where.published = published === "true";
+
+    const [posts, total] = await Promise.all([
+      prisma.post.findMany({
+        where,
+        skip,
+        take: parseInt(limit),
+        orderBy: { updatedAt: "desc" },
+        include: postListInclude,
+      }),
+      prisma.post.count({ where }),
+    ]);
+
+    res.json({
+      posts,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        pages: Math.ceil(total / parseInt(limit)),
+      },
+    });
+  } catch (error) {
+    console.error("Get my posts error:", error);
+    res.status(500).json({ error: "Server error fetching your posts" });
+  }
+};
+
 // Create new post
 export const createPost = async (req, res) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { title, slug, excerpt, content, coverImage, categories, tags } =
-      req.body;
+    const { title, slug, excerpt, content, coverImage, categories, tags } = req.body;
 
-    // Check if slug already exists
-    if (slug) {
-      const existingPost = await prisma.post.findUnique({
-        where: { slug },
-      });
+    const finalSlug = slug || slugify(title);
 
-      if (existingPost) {
-        return res.status(400).json({ error: "Slug already exists" });
-      }
+    const existingPost = await prisma.post.findUnique({ where: { slug: finalSlug } });
+    if (existingPost) {
+      return res.status(400).json({ error: "Slug already exists" });
     }
 
-    // Create post with relations
     const post = await prisma.post.create({
       data: {
         title,
-        slug: slug || title.toLowerCase().replace(/\s+/g, "-"),
+        slug: finalSlug,
         excerpt,
         content,
         coverImage,
+        readingTime: calcReadingTime(content),
         authorId: req.user.id,
-        categories: categories
-          ? {
-              connect: categories.map((id) => ({ id: parseInt(id) })),
-            }
-          : undefined,
-        tags: tags
-          ? {
-              connect: tags.map((id) => ({ id: parseInt(id) })),
-            }
-          : undefined,
+        categories: categories ? { connect: categories.map((id) => ({ id: parseInt(id) })) } : undefined,
+        tags: tags ? { connect: tags.map((id) => ({ id: parseInt(id) })) } : undefined,
       },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            avatar: true,
-          },
-        },
-        categories: true,
-        tags: true,
-      },
+      include: postListInclude,
     });
 
-    res.status(201).json({
-      message: "Post created successfully",
-      post,
-    });
+    res.status(201).json({ message: "Post created successfully", post });
   } catch (error) {
     console.error("Create post error:", error);
     res.status(500).json({ error: "Server error creating post" });
@@ -221,83 +241,45 @@ export const createPost = async (req, res) => {
 // Update post
 export const updatePost = async (req, res) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { id } = req.params;
-    const { title, slug, excerpt, content, coverImage, categories, tags } =
-      req.body;
+    const { title, slug, excerpt, content, coverImage, categories, tags } = req.body;
 
-    // Check if post exists and user has permission
-    const existingPost = await prisma.post.findUnique({
-      where: { id: parseInt(id) },
-    });
-
-    if (!existingPost) {
+    const existing = await prisma.post.findUnique({ where: { id: parseInt(id) } });
+    if (!existing) {
       return res.status(404).json({ error: "Post not found" });
     }
 
-    // Only the author or ADMIN can edit
-    if (existingPost.authorId !== req.user.id && req.user.role !== "ADMIN") {
-      return res
-        .status(403)
-        .json({ error: "Not authorized to edit this post" });
+    if (existing.authorId !== req.user.id && req.user.role !== "ADMIN") {
+      return res.status(403).json({ error: "Not authorized to edit this post" });
     }
 
-    // Check slug uniqueness if changing
-    if (slug && slug !== existingPost.slug) {
-      const slugExists = await prisma.post.findUnique({
-        where: { slug },
-      });
-
+    if (slug && slug !== existing.slug) {
+      const slugExists = await prisma.post.findUnique({ where: { slug } });
       if (slugExists) {
         return res.status(400).json({ error: "Slug already exists" });
       }
     }
 
-    // Update post
     const post = await prisma.post.update({
       where: { id: parseInt(id) },
       data: {
         ...(title && { title }),
         ...(slug && { slug }),
         ...(excerpt !== undefined && { excerpt }),
-        ...(content !== undefined && { content }),
+        ...(content !== undefined && { content, readingTime: calcReadingTime(content) }),
         ...(coverImage !== undefined && { coverImage }),
-        ...(categories && {
-          categories: {
-            set: [],
-            connect: categories.map((id) => ({ id: parseInt(id) })),
-          },
-        }),
-        ...(tags && {
-          tags: {
-            set: [],
-            connect: tags.map((id) => ({ id: parseInt(id) })),
-          },
-        }),
+        ...(categories && { categories: { set: [], connect: categories.map((id) => ({ id: parseInt(id) })) } }),
+        ...(tags && { tags: { set: [], connect: tags.map((id) => ({ id: parseInt(id) })) } }),
       },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            avatar: true,
-          },
-        },
-        categories: true,
-        tags: true,
-      },
+      include: postListInclude,
     });
 
-    res.json({
-      message: "Post updated successfully",
-      post,
-    });
+    res.json({ message: "Post updated successfully", post });
   } catch (error) {
     console.error("Update post error:", error);
     res.status(500).json({ error: "Server error updating post" });
@@ -309,30 +291,19 @@ export const publishPost = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existingPost = await prisma.post.findUnique({
-      where: { id: parseInt(id) },
-    });
+    const existing = await prisma.post.findUnique({ where: { id: parseInt(id) } });
+    if (!existing) return res.status(404).json({ error: "Post not found" });
 
-    if (!existingPost) {
-      return res.status(404).json({ error: "Post not found" });
-    }
-
-    if (existingPost.authorId !== req.user.id && req.user.role !== "ADMIN") {
+    if (existing.authorId !== req.user.id && req.user.role !== "ADMIN") {
       return res.status(403).json({ error: "Not authorized" });
     }
 
     const post = await prisma.post.update({
       where: { id: parseInt(id) },
-      data: {
-        published: true,
-        publishedAt: new Date(),
-      },
+      data: { published: true, publishedAt: new Date() },
     });
 
-    res.json({
-      message: "Post published successfully",
-      post,
-    });
+    res.json({ message: "Post published successfully", post });
   } catch (error) {
     console.error("Publish post error:", error);
     res.status(500).json({ error: "Server error publishing post" });
@@ -344,29 +315,19 @@ export const unpublishPost = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existingPost = await prisma.post.findUnique({
-      where: { id: parseInt(id) },
-    });
+    const existing = await prisma.post.findUnique({ where: { id: parseInt(id) } });
+    if (!existing) return res.status(404).json({ error: "Post not found" });
 
-    if (!existingPost) {
-      return res.status(404).json({ error: "Post not found" });
-    }
-
-    if (existingPost.authorId !== req.user.id && req.user.role !== "ADMIN") {
+    if (existing.authorId !== req.user.id && req.user.role !== "ADMIN") {
       return res.status(403).json({ error: "Not authorized" });
     }
 
     const post = await prisma.post.update({
       where: { id: parseInt(id) },
-      data: {
-        published: false,
-      },
+      data: { published: false },
     });
 
-    res.json({
-      message: "Post unpublished successfully",
-      post,
-    });
+    res.json({ message: "Post unpublished successfully", post });
   } catch (error) {
     console.error("Unpublish post error:", error);
     res.status(500).json({ error: "Server error unpublishing post" });
@@ -378,19 +339,14 @@ export const deletePost = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const existingPost = await prisma.post.findUnique({
-      where: { id: parseInt(id) },
-    });
+    const existing = await prisma.post.findUnique({ where: { id: parseInt(id) } });
+    if (!existing) return res.status(404).json({ error: "Post not found" });
 
-    if (!existingPost) {
-      return res.status(404).json({ error: "Post not found" });
+    if (existing.authorId !== req.user.id && req.user.role !== "ADMIN") {
+      return res.status(403).json({ error: "Not authorized to delete this post" });
     }
 
-    // Only ADMIN can delete (enforced by route middleware)
-    await prisma.post.delete({
-      where: { id: parseInt(id) },
-    });
-
+    await prisma.post.delete({ where: { id: parseInt(id) } });
     res.json({ message: "Post deleted successfully" });
   } catch (error) {
     console.error("Delete post error:", error);

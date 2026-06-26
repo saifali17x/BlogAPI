@@ -2,6 +2,8 @@ import express from "express";
 import {
   getAllPosts,
   getPostBySlug,
+  getRelatedPosts,
+  getMyPosts,
   createPost,
   updatePost,
   deletePost,
@@ -9,46 +11,21 @@ import {
   unpublishPost,
 } from "../controllers/postController.js";
 import { authenticateToken, authorizeRole } from "../middleware/auth.js";
-import {
-  createPostValidation,
-  updatePostValidation,
-} from "../middleware/validation.js";
+import { createPostValidation, updatePostValidation } from "../middleware/validation.js";
 
 const router = express.Router();
 
-// Public routes - anyone can view published posts
+// Public routes
 router.get("/", getAllPosts);
+router.get("/:slug/related", getRelatedPosts);
 router.get("/:slug", getPostBySlug);
 
-// Protected routes - only AUTHOR and ADMIN can create/edit posts
-router.post(
-  "/",
-  authenticateToken,
-  authorizeRole("AUTHOR", "ADMIN"),
-  createPostValidation,
-  createPost
-);
-router.put(
-  "/:id",
-  authenticateToken,
-  authorizeRole("AUTHOR", "ADMIN"),
-  updatePostValidation,
-  updatePost
-);
-router.patch(
-  "/:id/publish",
-  authenticateToken,
-  authorizeRole("AUTHOR", "ADMIN"),
-  publishPost
-);
-router.patch(
-  "/:id/unpublish",
-  authenticateToken,
-  authorizeRole("AUTHOR", "ADMIN"),
-  unpublishPost
-);
-
-// Delete - only ADMIN can delete posts
-router.delete("/:id", authenticateToken, authorizeRole("ADMIN"), deletePost);
+// Any authenticated user can create and manage their own posts
+router.get("/me/drafts", authenticateToken, getMyPosts);
+router.post("/", authenticateToken, createPostValidation, createPost);
+router.put("/:id", authenticateToken, updatePostValidation, updatePost);
+router.patch("/:id/publish", authenticateToken, publishPost);
+router.patch("/:id/unpublish", authenticateToken, unpublishPost);
+router.delete("/:id", authenticateToken, deletePost);
 
 export default router;
